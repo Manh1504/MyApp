@@ -3,17 +3,24 @@ package com.example.music;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Handler;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.SeekBar;
+import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -21,16 +28,30 @@ public class MainActivity extends AppCompatActivity {
     ImageView imageView;
     Context context;
     SeekBar seekBar;
+    SwitchCompat switchLooping;
+    TextView textViewTime;
     boolean isPlaying = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        applyLanguageFromPrefs();
         super.onCreate(savedInstanceState);
         context = this;
         setContentView(R.layout.activity_main);
         button = findViewById(R.id.button);
         imageView = findViewById(R.id.imageView);
         seekBar = findViewById(R.id.seekBar);
+        textViewTime = findViewById(R.id.textViewTime);
+        //c1
+        switchLooping = findViewById(R.id.switchLooping);
+        if (MyService.mediaPlayer != null) {
+            MyService.mediaPlayer.setLooping(true);
+        }
+        switchLooping.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (MyService.mediaPlayer != null) {
+                MyService.mediaPlayer.setLooping(isChecked);
+            }
+        });
         String imageUrl = "https://static-cse.canva.com/blob/1379502/1600w-1Nr6gsUndKw.jpg";
         MyThread myThread = new MyThread(imageUrl, context);
         myThread.start();
@@ -106,8 +127,9 @@ public class MainActivity extends AppCompatActivity {
                 button.setText("Pause");
                 updateSeekBar();
             }
-        });
 
+
+        });
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -122,11 +144,64 @@ public class MainActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {
             }
         });
+        Button buttonSettings = findViewById(R.id.buttonSettings);
+        buttonSettings.setOnClickListener(v -> {
+            startActivity(new Intent(this, SettingsActivity.class));
+        });
+
+    }
+    private void applyLanguageFromPrefs() {
+        SharedPreferences prefs = getSharedPreferences("music_prefs", MODE_PRIVATE);
+        String lang = prefs.getString("language", "vi");
+
+        Locale locale = new Locale(lang);
+        Locale.setDefault(locale);
+        Configuration config = new Configuration(getResources().getConfiguration());
+        config.setLocale(locale);
+        getResources().updateConfiguration(config, getResources().getDisplayMetrics());
+    }
+    private String formatTime(int millis) {
+        int seconds = (millis / 1000) % 60;
+        int minutes = (millis / 1000) / 60;
+        return String.format("%02d:%02d", minutes, seconds);
+    }
+    //c3
+    private void savePreferences() {
+        SharedPreferences prefs = getSharedPreferences("music_prefs", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+
+        // Lưu trạng thái lặp
+        editor.putBoolean("is_looping", switchLooping.isChecked());
+
+        // Lưu vị trí hiện tại (chỉ lưu khi nhạc đang chạy)
+        if (MyService.mediaPlayer != null) {
+            editor.putInt("current_position", MyService.mediaPlayer.getCurrentPosition());
+        }
+
+        editor.apply();
+    }
+
+    private void loadPreferences() {
+        SharedPreferences prefs = getSharedPreferences("music_prefs", MODE_PRIVATE);
+
+        // Khôi phục trạng thái lặp
+        boolean isLooping = prefs.getBoolean("is_looping", true); // mặc định true
+        switchLooping.setChecked(isLooping);
+        if (MyService.mediaPlayer != null) {
+            MyService.mediaPlayer.setLooping(isLooping);
+        }
+
+        // Khôi phục vị trí bản nhạc
+        int savedPosition = prefs.getInt("current_position", 0); // mặc định 0
+        if (MyService.mediaPlayer != null && savedPosition > 0) {
+            MyService.mediaPlayer.seekTo(savedPosition);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        loadPreferences(); // Khôi phục khi mở app lên
         updateSeekBar();
     }
 
@@ -137,10 +212,14 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 if (MyService.mediaPlayer != null && MyService.mediaPlayer.isPlaying()) {
                     isPlaying = true;
-                    seekBar.setMax(MyService.mediaPlayer.getDuration());
-                    seekBar.setProgress(MyService.mediaPlayer.getCurrentPosition());
+                    int current = MyService.mediaPlayer.getCurrentPosition();
+                    int duration = MyService.mediaPlayer.getDuration();
+                    seekBar.setMax(duration);
+                    seekBar.setProgress(current);
+                    // Cập nhật TextView thời gian
+                    textViewTime.setText(formatTime(current) + " / " + formatTime(duration));
                 }
-                handler.postDelayed(this, 1000); // Cập nhật seekbar mỗi 1 giây
+                handler.postDelayed(this, 1000);
             }
         }, 0);
     }
@@ -148,6 +227,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
+        savePreferences();// lưu lại
         if (isPlaying && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             Intent notificationIntent = new Intent(context, MainActivity.class);
             notificationIntent.setAction(Intent.ACTION_MAIN);
@@ -165,4 +245,5 @@ public class MainActivity extends AppCompatActivity {
             notificationManager.notify(1, builder.build());
         }
     }
+
 }

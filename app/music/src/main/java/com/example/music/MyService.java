@@ -13,7 +13,7 @@ public class MyService extends Service {
     public void onCreate() {
         super.onCreate();
         mediaPlayer = MediaPlayer.create(this, R.raw.country_rock);
-        mediaPlayer.setLooping(true); // Lặp lại nhạc
+        mediaPlayer.setLooping(true); // mặc định bật lặp
     }
 
     @Override
@@ -35,3 +35,6 @@ public class MyService extends Service {
         return null;
     }
 }
+
+
+
